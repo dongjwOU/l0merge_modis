@@ -1,0 +1,99 @@
+?   SYSTEM RUNTIME PARAMETERS
+1
+1
+?   PRODUCT INPUT FILES
+!  ~/runtime
+# -----------------------------------------------------------------------
+# file for Constant & Unit Conversion (CUC) tools
+# IMPORTANT NOTE: THIS FILE WILL BE SUPPLIED AFTER TK4 DELIVERY!
+# -----------------------------------------------------------------------
+10999|PGS_CUC_maths_parameters|~/database/common/CUC||||1
+?   PRODUCT OUTPUT FILES
+!  ~/runtime
+#------------------------------------------------------------------------
+# This file is created when PGS_MET_Write is used with an intention
+# to write an ASCII representation of the MCF in memory. The user is
+# allowed to change the name and path if required.
+#
+# NOTE: THIS IS OBSOLETE, THIS ENTRY IS ONLY HERE FOR BACKWARD
+#       COMPATIBILITY WITH PREVIOUS VERSIONS OF THE TOOLKIT.
+#       THE LOGICAL ID 10255 SHOULD BE MOVED DOWN TO THE RUNTIME
+#       PARAMETERS SECTION OF THIS FILE AND GIVEN A VALUE OF:
+#       <logical_id>:<version_number> WHERE THOSE VALUES REFLECT THE
+#       ACTUAL VALUES FOR THE NON-HDF OUTPUT PRODUCT FOR WHICH THE
+#       ASCII METADATA IS BEING WRITTEN.  e.g.:
+#       10255|reference output product|100:2
+#
+#------------------------------------------------------------------------
+10255|asciidump|||||1
+# -----------------------------------------------------------------------
+?   SUPPORT INPUT FILES
+!  ~/runtime
+# -----------------------------------------------------------------------
+# leap seconds (TAI-UTC) file (DO NOT REMOVE THIS ENTRY)
+# -----------------------------------------------------------------------
+10301|leapsec.dat|~/database/common/TD||||1
+#
+# -----------------------------------------------------------------------
+# polar motion and UTC-UT1 file (DO NOT REMOVE THIS ENTRY)
+# -----------------------------------------------------------------------
+10401|utcpole.dat|~/database/common/CSC||||1
+#
+# -----------------------------------------------------------------------
+# earth model tags file (DO NOT REMOVE THIS ENTRY)
+# -----------------------------------------------------------------------
+10402|earthfigure.dat|~/database/common/CSC||||1
+#
+# -----------------------------------------------------------------------
+# JPL planetary ephemeris file (binary form) (DO NOT REMOVE THIS ENTRY)
+# -----------------------------------------------------------------------
+10601|de200.eos|~/database/sgi32/CBP||||1
+#
+# -----------------------------------------------------------------------
+# spacecraft tag definition file (DO NOT REMOVE THIS ENTRY)
+# -----------------------------------------------------------------------
+10801|sc_tags.dat|~/database/common/EPH||||1
+#
+# -----------------------------------------------------------------------
+# units conversion definition file (DO NOT REMOVE THIS ENTRY)
+# -----------------------------------------------------------------------
+10302|udunits.dat|~/database/common/CUC||||1
+#
+#
+?   SUPPORT OUTPUT FILES 
+!  ~/runtime
+#
+# -----------------------------------------------------------------------
+# These files support the SMF log functionality. Each run will cause
+# status information to be written to 1 or more of the Log files. To
+# simulate DAAC operations, remove the 3 Logfiles between test runs.
+# Remember: all executables within a PGE will contribute status data to 
+# the same batch of log files. (DO NOT REMOVE THESE ENTRIES)
+# -----------------------------------------------------------------------
+10100|l0merge.LogStatus|.||||1
+10101|l0merge.LogReport|.||||1
+10102|l0merge.LogUser|.||||1
+10103|l0merge.TmpStatus|.||||1
+10104|l0merge.TmpReport|.||||1
+10105|l0merge.TmpUser|.||||1
+10110|l0merge.MailFile|.||||1
+#
+# -----------------------------------------------------------------------
+# ASCII file which stores pointers to runtime SMF files in lieu of 
+# loading them to shared memory, which is a TK5 enhancement.
+# (DO NOT REMOVE THIS ENTRY)
+# -----------------------------------------------------------------------
+10111|l0merge.ShmMem|.||||1
+#
+#  
+?   USER DEFINED RUNTIME PARAMETERS
+# None
+?   INTERMEDIATE INPUT
+!  ~/runtime
+# None
+?   INTERMEDIATE OUTPUT
+!  ~/runtime
+# None
+?   TEMPORARY I/O
+!  .
+?   END
