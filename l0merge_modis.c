@@ -288,7 +288,7 @@ int main ( int argc, char ** argv )
     memcpy( last_time, ord_input[cur_input]->header + TIME_OFFSET, TIME_SIZE );
 
     do {
-        fprintf( stderr, "Processing %d\n", cur_input );
+        fprintf( stderr, "Processing %s\n", ord_input[cur_input]->name );
 
         file_pkts_written = 0;
         buffer.size = ord_input[cur_input]->size;
@@ -359,7 +359,8 @@ int main ( int argc, char ** argv )
         }
 
         if( needs_processing ) {
-            fprintf( stderr, "Writing packets from %d\n", cur_input );
+            fprintf( stderr, "Writing packets from %s\n", 
+                ord_input[cur_input]->name );
             do {
                 packet_cnt = get_packet_count( buffer.data + packet.pos );
                 packet_time = buffer.data + packet.pos + TIME_OFFSET;
@@ -387,8 +388,8 @@ int main ( int argc, char ** argv )
 
         fclose( ord_input[cur_input]->file );
         ord_input[cur_input]->file = NULL;
-        fprintf( stderr, "Finished %d, %d packets written\n", 
-            cur_input, file_pkts_written );
+        fprintf( stderr, "Finished %s, %d packets written\n", 
+            ord_input[cur_input]->name, file_pkts_written );
 
         cur_input++;
     } while( ord_input[cur_input] != NULL );
