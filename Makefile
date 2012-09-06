@@ -1,12 +1,25 @@
-PGSHOME=/home/kikht/opt/sdptk
-PGSINC=$(PGSHOME)/include
-PGSLIB=$(PGSHOME)/lib/linux
+# PGSHOME=/home/kikht/opt/sdptk-lto
+# PGSINC=$(PGSHOME)/include
+# PGSLIB=$(PGSHOME)/lib/linux
+
+CFLAGS_BASE=$(CFLAGS) -Wall -pedantic -ansi
+CFLAGS_RELEASE=$(CFLAGS_BASE) -O3 -fwhole-program -flto -fuse-linker-plugin
+CFLAGS_DEBUG=$(CFLAGS_BASE) -O0 -g
+
+ifdef PGSHOME
+	PGSINC?=$(PGSHOME)/include
+	PGSLIB?=$(PGSHOME)/lib/linux
+	PGSFLAGS=-I$(PGSINC) -L$(PGSLIB) -lPGSTK -DHAVE_SDPTOOLKIT
+endif
 
 l0merge_modis: l0merge_modis.c
-	gcc -O3 -Wall -pedantic -ansi -o $@ -I$(PGSINC) -L$(PGSLIB) $^ -lPGSTK -lm
+ifndef PGSFLAGS
+	echo "Building without SDPToolkit!"
+endif
+	$(CC) $(CFLAGS_RELEASE) -o $@ $^ $(PGSFLAGS) -lm
 
-debug: l0merge_modis.c
-	gcc -O0 -g -Wall -pedantic -ansi -o l0merge_modis -I$(PGSINC) -L$(PGSLIB) $^ -lPGSTK -lm	
+l0merge_modis_debug: l0merge_modis.c
+	$(CC) $(CFLAGS_DEBUG) -o $@ $^ $(PGSFLAGS) -lm
 
 clean:
-	rm -rf l0merge_modis
+	rm -rf l0merge_modis l0merge_modis_debug

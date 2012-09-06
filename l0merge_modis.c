@@ -3,7 +3,9 @@
 #include <string.h>
 #include <getopt.h>
 
+#ifdef HAVE_SDPTOOLKIT
 #include <PGS_TD.h>
+#endif
 
 #define MAX_FILES 5
 
@@ -401,6 +403,7 @@ int main ( int argc, char ** argv )
         out_file = NULL;
     }
 
+#ifdef HAVE_SDPTOOLKIT
     PGS_TD_EOSAMtoTAI( first_time, &first_time_tai );
     PGS_TD_EOSAMtoUTC( first_time, output.data );
     fprintf( stderr, "starttime=%s\n", output.data );
@@ -410,6 +413,7 @@ int main ( int argc, char ** argv )
     fprintf( stderr, "stoptime =%s\n", output.data );
 
     fprintf( stderr, "granule length =%f\n", last_time_tai - first_time_tai );
+#endif
 
     if( cnst_file ) {
         fprintf( stderr, "Writing constructor record to %s\n", cnst_file_name );
