@@ -21,6 +21,8 @@
 #define CNSTR_SIZE 384
 #define UTC_TIME_SIZE 27
 
+#define MODIS_APID 64
+
 #define PACKET_LEN_OFFSET 4
 #define PACKET_CNT_OFFSET 2
 #define SEC_HDR_OFFSET PRIM_HDR_SIZE
@@ -184,7 +186,7 @@ int main ( int argc, char ** argv )
     packet_t packet;
     buffer_t buffer, output;
     /* local temp vars */
-    int i, j, cur_input = -1, last_cnt = 0, packet_cnt;
+    int i, j, cur_input = -1, last_cnt = 0, packet_cnt, apid;
     int needs_processing, cmpres;
     char * packet_time;
     size_t packet_pos, file_pos;
@@ -381,14 +383,17 @@ int main ( int argc, char ** argv )
                     break;
                 }
 
-                if( !write_packet( &packet, &buffer, &output, out_file ) ) {
-                    fprintf( stderr, "Can't write to output\n" );
-                    return 1;
-                }
+                apid = get_packet_apid( buffer.data + packet.pos );
+                if( apid == MODIS_APID ) {
+                    if( !write_packet( &packet, &buffer, &output, out_file ) ) {
+                        fprintf( stderr, "Can't write to output\n" );
+                        return 1;
+                    }
+                    file_pkts_written++;
+                    total_pkts_written++;
+                }                    
                 memcpy( last_time, packet_time, TIME_SIZE );
                 last_cnt = packet_cnt;
-                file_pkts_written++;
-                total_pkts_written++;
             } while( next_packet( ord_input[cur_input], &packet, &buffer ) );
             files_processed++;
         }
