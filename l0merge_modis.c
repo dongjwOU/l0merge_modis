@@ -21,7 +21,8 @@
 #define CNSTR_SIZE 384
 #define UTC_TIME_SIZE 27
 
-#define MODIS_APID 64
+#define MODIS_APID_MIN 64
+#define MODIS_APID_MAX 127
 
 #define PACKET_LEN_OFFSET 4
 #define PACKET_CNT_OFFSET 2
@@ -384,7 +385,7 @@ int main ( int argc, char ** argv )
                 }
 
                 apid = get_packet_apid( buffer.data + packet.pos );
-                if( apid == MODIS_APID ) {
+                if( apid >= MODIS_APID_MIN && apid <= MODIS_APID_MAX ) {
                     if( !write_packet( &packet, &buffer, &output, out_file ) ) {
                         fprintf( stderr, "Can't write to output\n" );
                         return 1;
