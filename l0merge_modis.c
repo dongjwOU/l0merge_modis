@@ -68,10 +68,15 @@ static int get_packet_count ( char const * packet )
     return get_int16( packet, PACKET_CNT_OFFSET ) & 0x3fff;
 }
 
+static int get_packet_apid ( char const * packet )
+{
+    return get_int16( packet, 0 ) & 0x7ff;
+}
+
 static void debug_output( char const * packet ) {
 
     int type = ( ( ( unsigned char ) packet[0] ) >> 4 ) & 0x1;
-    int apid = get_int16( packet, 0 ) & 0x7ff;
+    int apid = get_packet_apid( packet );
     int sflg = get_int16( packet, 2 ) >> 14;
     int cnt = get_packet_count( packet );
     int days = get_int16( packet, 6 );
@@ -121,7 +126,7 @@ static int next_packet ( input_t * input, packet_t * packet, buffer_t * buffer )
         return 0;
     }
     packet->len = get_packet_length( buffer->data + packet->pos );
-    if( packet->len != NIGHT_PACKET_SIZE && packet->len != DAY_PACKET_SIZE ) {
+    if( packet->len > FILE_READ_SIZE ) {
         fprintf( stderr, "Wrong packet size %d in %s\n", 
             ( int ) packet->len, input->name );
         debug_output( buffer->data + packet->pos );
