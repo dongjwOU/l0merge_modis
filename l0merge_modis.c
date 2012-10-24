@@ -415,15 +415,17 @@ int main ( int argc, char ** argv )
     }
 
 #ifdef HAVE_SDPTOOLKIT
-    PGS_TD_EOSAMtoTAI( first_time, &first_time_tai );
-    PGS_TD_EOSAMtoUTC( first_time, output.data );
-    fprintf( stderr, "starttime=%s\n", output.data );
-
-    PGS_TD_EOSAMtoTAI( last_time, &last_time_tai );
-    PGS_TD_EOSAMtoUTC( last_time, output.data );
-    fprintf( stderr, "stoptime =%s\n", output.data );
-
-    fprintf( stderr, "granule length =%f\n", last_time_tai - first_time_tai );
+    if( PGS_TD_EOSAMtoUTC( first_time, output.data ) == PGS_S_SUCCESS ) {
+        fprintf( stderr, "starttime=%s\n", output.data );
+    }
+    if( PGS_TD_EOSAMtoUTC( last_time, output.data ) == PGS_S_SUCCESS ) {
+        fprintf( stderr, "stoptime =%s\n", output.data );
+    }
+    if( PGS_TD_EOSAMtoTAI( first_time, &first_time_tai ) == PGS_S_SUCCESS &&
+            PGS_TD_EOSAMtoTAI( last_time, &last_time_tai ) == PGS_S_SUCCESS ) {
+        fprintf( stderr, "granule length =%f\n", 
+            last_time_tai - first_time_tai );
+    }
 #endif
 
     if( cnst_file ) {
