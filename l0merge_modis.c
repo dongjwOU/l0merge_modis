@@ -93,21 +93,21 @@ static void debug_output ( char const * packet ) {
 
 }
 
-static void print_time ( char const * name, unsigned char * time ) {
-#ifdef HAVE_SDPTOOLKIT
+static void print_time ( char const * format, unsigned char * time ) {
     char str[UTC_TIME_SIZE];
-    int i;
-
+    int i = 1;
+#ifdef HAVE_SDPTOOLKIT
     if( PGS_TD_EOSAMtoUTC( time, str ) == PGS_S_SUCCESS ) {
-        fprintf( stderr, "%s=%s\n", name, str );
-    } else {
-        fprintf( stderr, "%s_debug=", name );
-        for( i = 0; i < TIME_SIZE; ++i ) {
-            fprintf( stderr, "%x", time[i] );
-        }
-        fprintf( stderr, "\n" );
+        i = 0;
     }
 #endif
+    if( i ) {
+        for( i = 0; i < TIME_SIZE; ++i ) {
+            sprintf( str + 2*i, "%02x", time[i] );
+        }
+        str[TIME_SIZE*2] = '\0';
+    }
+    fprintf( stderr, format, str );
 }
 
 static int ensure_data ( input_t * input )
@@ -364,8 +364,8 @@ int main ( int argc, char ** argv )
                 } else if( cmpres > 0 ) {
                     /*if not found, return to remembered position & report gap*/
                     fprintf( stderr, "Warning: gap between files\n" );
-                    print_time( "last_time", last_time );
-                    print_time( "packet_time", ( unsigned char * )packet_time );
+                    print_time( "from %s", last_time );
+                    print_time( "to %s\n", ( unsigned char * )packet_time );
 
                     if( fseek( cur_input->file, file_pos, SEEK_SET) ) 
                     {
@@ -395,32 +395,36 @@ int main ( int argc, char ** argv )
             fprintf( stderr, "Writing packets from %s\n", cur_input->name );
             do {
                 apid = get_packet_apid( cur_input->packet );
-                if( is_modis_apid( apid ) ) {
-                    packet_cnt = get_packet_count( cur_input->packet );
-                    packet_time = cur_input->packet + TIME_OFFSET;
-                    if( packet_cnt != ( ( last_cnt + 1 ) & 0x3fff ) &&
-                            memcmp( packet_time, last_time, TIME_SIZE ) == 0 ) {
-                        if( ord_input[cur_input_idx] != NULL && 
-                                memcmp( ord_input[cur_input_idx]->packet + 
-                                TIME_OFFSET,packet_time, TIME_SIZE ) < 0 ) {
-                            fprintf( stderr, 
-                            "Gap inside file, trying to fix with next one\n");
-                            break;
-                        } else {
-                            fprintf( stderr, "Gap inside file, no file to fix");
-                        }
-                    }
+                if( !is_modis_apid( apid ) ) {
+                    break;
+                }   
 
-                    if( !write_packet( cur_input, &output ) ) {
-                        fprintf( stderr, "Can't write to output\n" );
-                        retval = 1;
-                        goto cleanup;
+                packet_cnt = get_packet_count( cur_input->packet );
+                packet_time = cur_input->packet + TIME_OFFSET;
+
+                if( packet_cnt != ( ( last_cnt + 1 ) & 0x3fff ) &&
+                        memcmp( packet_time, last_time, TIME_SIZE ) == 0 ) {
+                    if( ord_input[cur_input_idx] != NULL && 
+                            memcmp( ord_input[cur_input_idx]->packet + 
+                            TIME_OFFSET, packet_time, TIME_SIZE ) < 0 ) {
+                        fprintf( stderr, 
+                            "Gap inside file, trying to fix with next one\n");
+                        break;
+                    } else {
+                        print_time( "Gap inside file from %s", last_time );
+                        print_time( " to %s\n", ( unsigned char *)packet_time );
                     }
-                    file_pkts_written++;
-                    total_pkts_written++;
-                    memcpy( last_time, packet_time, TIME_SIZE );
-                    last_cnt = packet_cnt;
-                }                    
+                } 
+
+                if( !write_packet( cur_input, &output ) ) {
+                    fprintf( stderr, "Can't write to output\n" );
+                    retval = 1;
+                    goto cleanup;
+                }
+                file_pkts_written++;
+                total_pkts_written++;
+                memcpy( last_time, packet_time, TIME_SIZE );
+                last_cnt = packet_cnt;                 
             } while( next_packet( cur_input ) );
             files_processed++;
         }
@@ -429,14 +433,13 @@ int main ( int argc, char ** argv )
         cur_input->file = NULL;
         fprintf( stderr, "Finished %s, %d packets written\n", 
             cur_input->name, file_pkts_written );
-
     } 
 
     flush_buffer( &output );
 
 #ifdef HAVE_SDPTOOLKIT
-    print_time( "starttime", first_time );
-    print_time( "stoptime ", last_time );
+    print_time( "starttime=%s\n", first_time );
+    print_time( "stoptime =%s\n", last_time );
     if( PGS_TD_EOSAMtoTAI( first_time, &first_time_tai ) == PGS_S_SUCCESS &&
             PGS_TD_EOSAMtoTAI( last_time, &last_time_tai ) == PGS_S_SUCCESS ) {
         fprintf( stderr, "granule length =%f\n", 
