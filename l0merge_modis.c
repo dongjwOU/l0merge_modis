@@ -7,7 +7,7 @@
 #include <PGS_TD.h>
 #endif
 
-#define MAX_FILES 5
+#define MAX_FILES 100
 
 #define FILE_PREFETCH_SIZE 32768
 #define FILE_READ_SIZE ( 8 * FILE_PREFETCH_SIZE )
@@ -35,19 +35,18 @@ extern int optind, opterr, optopt;
 typedef struct {
     char * name;
     FILE * file;
-    char header[FILE_PREFETCH_SIZE];
     size_t size;
+    char * packet;
+    size_t packet_len;
+    char data[BUFFER_SIZE];
 } input_t;
 
 typedef struct {
-    size_t pos;
-    size_t len;
-} packet_t;
-
-typedef struct {
-    char data[BUFFER_SIZE];
+    FILE * file;
     size_t size;
-} buffer_t;
+    char data[BUFFER_SIZE];
+} output_t;
+
 
 static unsigned int get_int16 ( char const * packet, int offset )
 {
@@ -76,7 +75,11 @@ static int get_packet_apid ( char const * packet )
     return get_int16( packet, 0 ) & 0x7ff;
 }
 
-static void debug_output( char const * packet ) {
+static int is_modis_apid ( int apid ) {
+    return apid >= MODIS_APID_MIN && apid <= MODIS_APID_MAX;
+}
+
+static void debug_output ( char const * packet ) {
 
     int type = ( ( ( unsigned char ) packet[0] ) >> 4 ) & 0x1;
     int apid = get_packet_apid( packet );
@@ -90,7 +93,7 @@ static void debug_output( char const * packet ) {
 
 }
 
-static void print_time( char const * name, unsigned char * time ) {
+static void print_time ( char const * name, unsigned char * time ) {
     char str[UTC_TIME_SIZE];
     int i;
 
@@ -105,30 +108,25 @@ static void print_time( char const * name, unsigned char * time ) {
     }
 }
 
-static int ensure_data ( 
-    input_t * input, 
-    packet_t * packet, 
-    buffer_t * buffer )
+static int ensure_data ( input_t * input )
 {
-    if( packet->pos + packet->len <= buffer->size )
+    if( input->packet + input->packet_len <= input->data + input->size )
         return 1;
 
     if( !feof( input->file ) ) {
-        buffer->size -= packet->pos;
-        memmove( buffer->data, buffer->data + packet->pos, buffer->size );
-        packet->pos = 0;
-        buffer->size += fread( 
-            buffer->data + buffer->size, 1, FILE_READ_SIZE, input->file );
+        input->size -= ( input->packet - input->data );
+        memmove( input->data, input->packet, input->size );
+        input->packet = input->data;
+        input->size += fread( 
+            input->data + input->size, 1, FILE_READ_SIZE, input->file );
     } 
 
-    if( buffer->size < packet->pos + packet->len ) {
+    if( input->data + input->size < input->packet + input->packet_len ) {
         if( feof( input->file ) ) {
-            if( buffer->size != packet->pos ) {
-               fprintf( stderr, "Incomplete packet in the end of file\n" );
-            }
+            fprintf( stderr, "Incomplete packet in the end of file\n" );
         } else {
             fprintf( stderr, "Can't read %d bytes for packet\n", 
-                ( int ) packet->len );
+                ( int ) input->packet_len );
         }
         return 0;
     } else {
@@ -136,52 +134,47 @@ static int ensure_data (
     }
 }
 
-static int next_packet ( input_t * input, packet_t * packet, buffer_t * buffer )
+static int next_packet ( input_t * input )
 {
-    packet->pos += packet->len;
-    packet->len = PRIM_HDR_SIZE;
-    if( !ensure_data( input, packet, buffer ) ) {
+    input->packet += input->packet_len;
+    input->packet_len = PRIM_HDR_SIZE;
+    if( !ensure_data( input ) ) {
         return 0;
     }
-    packet->len = get_packet_length( buffer->data + packet->pos );
-    if( packet->len > FILE_READ_SIZE ) {
+    input->packet_len = get_packet_length( input->packet );
+    if( input->packet_len > FILE_READ_SIZE ) {
         fprintf( stderr, "Wrong packet size %d in %s\n", 
-            ( int ) packet->len, input->name );
-        debug_output( buffer->data + packet->pos );
+            ( int ) input->packet_len, input->name );
+        debug_output( input->packet );
         return 0;
     }
-    if( !ensure_data( input, packet, buffer ) ) {
+    if( !ensure_data( input ) ) {
         return 0;
     }
     return 1;
 }
 
-static int write_packet ( 
-    packet_t const * packet, 
-    buffer_t const * input, 
-    buffer_t * output,
-    FILE * stream ) 
+static int write_packet ( input_t const * input, output_t * output ) 
 {
     size_t rest;
-    if( output->size + packet->len >= FILE_WRITE_SIZE ) {
+    if( output->size + input->packet_len >= FILE_WRITE_SIZE ) {
         rest = FILE_WRITE_SIZE - output->size;
-        memcpy( output->data + output->size, input->data + packet->pos, rest );
-        if( fwrite( output->data, FILE_WRITE_SIZE, 1, stream ) != 1 ) {
+        memcpy( output->data + output->size, input->packet, rest );
+        if( fwrite( output->data, FILE_WRITE_SIZE, 1, output->file ) != 1 ) {
             return 0;
         }
-        output->size = packet->len - rest;
-        memcpy( output->data, input->data + packet->pos + rest, output->size );
+        output->size = input->packet_len - rest;
+        memcpy( output->data, input->packet + rest, output->size );
     } else {
-        memcpy( output->data + output->size, input->data + packet->pos, 
-            packet->len );
-        output->size += packet->len;
+        memcpy( output->data + output->size, input->packet, input->packet_len );
+        output->size += input->packet_len;
     }
     return 1;
 }
 
-static int flush_buffer ( buffer_t * output, FILE * stream )
+static int flush_buffer ( output_t * output )
 {
-    return ( fwrite( output->data, output->size, 1, stream ) == 1 );
+    return ( fwrite( output->data, output->size, 1, output->file ) == 1 );
 }
 
 int main ( int argc, char ** argv ) 
@@ -189,7 +182,6 @@ int main ( int argc, char ** argv )
     int retval = 0;
     /* args */
     int opt, file_count;
-    FILE * out_file = stdout;
     FILE * cnst_file = NULL;
     char * cnst_file_name = NULL;
     /* statistics */
@@ -197,25 +189,29 @@ int main ( int argc, char ** argv )
     unsigned char first_time[TIME_SIZE], last_time[TIME_SIZE];
     double first_time_tai, last_time_tai;
     /* global static structures */
-    input_t input[MAX_FILES];
-    input_t * ord_input[MAX_FILES + 1];
-    packet_t packet;
-    buffer_t buffer, output;
+    input_t * input;
+    input_t ** ord_input;
+    output_t output;
     /* local temp vars */
-    int i, j, cur_input = -1, last_cnt = 0, packet_cnt, apid;
+    int i, j, cur_input_idx = -1, last_cnt = 0, packet_cnt, apid;
+    input_t * cur_input;
     int needs_processing, cmpres;
-    char * packet_time;
-    size_t packet_pos, file_pos;
+    char * packet_time, * packet_pos;
+    size_t file_pos;
+
+    memset( last_time, 0, sizeof( last_time ) );
+    output.size = 0;
+    output.file = stdout;
 
     while( ( opt = getopt( argc, argv, "o:c:") ) != -1 ) {
         switch( opt ) {
         case 'o':
-            if( out_file != stdout ) {
+            if( output.file != stdout ) {
                 fprintf( stderr, "invalid duplicate option -- 'o'\n" );
                 return 1;
             }
-            out_file = fopen( optarg, "wb" );
-            if( out_file == NULL ) {
+            output.file = fopen( optarg, "wb" );
+            if( output.file == NULL ) {
                 fprintf( stderr, "Can't open output file %s\n", optarg );
                 return 1;
             }
@@ -245,38 +241,40 @@ int main ( int argc, char ** argv )
         return 1;
     }
 
-    memset( last_time, 0, sizeof( last_time ) );
-    output.size = 0;
-    for( i = 0; i < MAX_FILES; ++i ) {
-        input[i].file = NULL;
-        input[i].name = NULL;
-        input[i].size = 0;
+    /* allocate buffers */
+    input = ( input_t * ) malloc( sizeof( input_t ) * file_count );
+    ord_input = ( input_t ** ) malloc( sizeof( input_t* ) * ( file_count+1 ) );
+    for( i = 0; i <= file_count; ++i ) {
         ord_input[i] = NULL;
     }
 
+    /* initialize input files */
     for( i = 0; i < file_count; ++i ) {
+        /* open file */
         input[i].name = argv[i+optind];
         input[i].file = fopen( input[i].name, "rb" );
         if( input[i].file == NULL ) {
             fprintf( stderr, "Can't open %s, skipping\n", input[i].name );
             continue;
         }
-
+        /* read first chunk */
         input[i].size = fread( 
-            input[i].header, 1, FILE_PREFETCH_SIZE, input[i].file );
+            input[i].data, 1, FILE_PREFETCH_SIZE, input[i].file );
         if( input[i].size < NIGHT_PACKET_SIZE ) {
             fprintf( stderr, "File %s is too small, skipping\n", input[i].name);
             fclose( input[i].file );
             input[i].file = NULL;
             continue;
         }
-
-        packet.len = get_packet_length( input[i].header );
-        if( packet.len != NIGHT_PACKET_SIZE && packet.len != DAY_PACKET_SIZE ) {
-            fprintf( stderr, 
-                "First packet has incorrect length (%d), skipping file %s\n", 
-                ( int ) packet.len, input[i].name );
-            debug_output( input[i].header );
+        /* search for the first MODIS packet */
+        input[i].packet = input[i].data;
+        input[i].packet_len = get_packet_length( input[i].packet );
+        do {
+            apid = get_packet_apid( input[i].packet );
+        } while( !is_modis_apid( apid ) && next_packet( &input[i] ) );
+        if( !is_modis_apid( apid ) ) {
+            fprintf( stderr, "File %s contains no modis packets, skipping\n",
+                input[i].name );
             fclose( input[i].file );
             input[i].file = NULL;
             continue;
@@ -289,145 +287,144 @@ int main ( int argc, char ** argv )
     /* sort inputs by start time */
     for( i = 1; i < file_count; ++i ) {
         if( ord_input[i] != NULL ) {
-            ord_input[MAX_FILES] = ord_input[i];
+            ord_input[file_count] = ord_input[i];
             j = i;
             while( j > 0 && ( ord_input[j-1] == NULL || 
-                    memcmp( ord_input[MAX_FILES]->header + TIME_OFFSET,
-                        ord_input[j-1]->header + TIME_OFFSET, 
+                    memcmp( ord_input[file_count]->packet + TIME_OFFSET,
+                        ord_input[j-1]->packet + TIME_OFFSET, 
                         TIME_SIZE ) < 0 ) ) {
                 ord_input[j] = ord_input[j-1];
                 j--;
             }
-            ord_input[j] = ord_input[MAX_FILES];
+            ord_input[j] = ord_input[file_count];
         }
     }
-    ord_input[MAX_FILES] = NULL;
-    cur_input = 0;
+    ord_input[file_count] = NULL;
 
-    if( ord_input[cur_input] == NULL ) {
+    if( ord_input[0] == NULL ) {
         fprintf( stderr, "No valid input files provided\n" );
-        return 1;
+        retval = 1;
+        goto cleanup;
     }
 
-    memcpy( first_time, ord_input[cur_input]->header + TIME_OFFSET, TIME_SIZE );
-    memcpy( last_time, ord_input[cur_input]->header + TIME_OFFSET, TIME_SIZE );
+    /* initialize start & stoptime */
+    cur_input_idx = 0;
+    memcpy( first_time, ord_input[0]->data + TIME_OFFSET, TIME_SIZE );
+    memcpy( last_time, ord_input[0]->data + TIME_OFFSET, TIME_SIZE );
 
-    do {
-        fprintf( stderr, "Processing %s\n", ord_input[cur_input]->name );
+    /* process files in order of starttime */
+    while( ( cur_input = ord_input[cur_input_idx++] ) != NULL ) {
+        fprintf( stderr, "Processing %s\n", cur_input->name );
 
         file_pkts_written = 0;
-        buffer.size = ord_input[cur_input]->size;
-        memcpy( buffer.data, ord_input[cur_input]->header, 
-            ord_input[cur_input]->size );
-
-        packet.pos = 0;
-        packet.len = get_packet_length( ord_input[cur_input]->header );  
-
+        /* determine if file has interesting packets */
+        needs_processing = 1;
         if( files_processed != 0 ) {
-            needs_processing = 1;    
-            packet_time = buffer.data + packet.pos + TIME_OFFSET;
-            cmpres = memcmp( packet_time, last_time, TIME_SIZE );
-            while( cmpres < 0 && 
-                    next_packet( ord_input[cur_input], &packet, &buffer ) ) {
-                packet_time = buffer.data + packet.pos + TIME_OFFSET;    
-                cmpres = memcmp( packet_time, last_time, TIME_SIZE );
-            }
-            if( cmpres < 0 ) {
+            /* skip all packets before last_time */
+            cmpres = -1;
+            do {
+                apid = get_packet_apid( cur_input->packet );
+                if( is_modis_apid( apid ) ) {
+                    packet_time = cur_input->packet + TIME_OFFSET;
+                    cmpres = memcmp( packet_time, last_time, TIME_SIZE );
+                }
+            } while( ( !is_modis_apid( apid ) || cmpres < 0 ) 
+                    && next_packet( cur_input ) );
+            
+            if( !is_modis_apid( apid ) || cmpres < 0 ) {
                 needs_processing = 0;
                 fprintf( stderr, "File is fully overlapped\n" );
             } else {
                 /*remember position*/
-                packet_pos = packet.pos;
-                file_pos = ftell( ord_input[cur_input]->file );
+                packet_pos = cur_input->packet;
+                file_pos = ftell( cur_input->file );
                 if( file_pos < 0 ) {
                     fprintf( stderr, "Can't get file position\n" );
                     return 1;
                 }
-                file_pos -= buffer.size;
+                file_pos -= cur_input->size;
                 /*search for packet cnt = last+1*/
-                packet_cnt = get_packet_count( buffer.data + packet.pos );
+                packet_cnt = get_packet_count( cur_input->packet );
                 while( cmpres == 0 && 
                         packet_cnt != ( ( last_cnt + 1 ) & 0x3fff ) &&
-                        next_packet( ord_input[cur_input], &packet, &buffer ) ){
-                    packet_time = buffer.data + packet.pos + TIME_OFFSET;    
-                    cmpres = memcmp( packet_time, last_time, TIME_SIZE );       
-                    packet_cnt = get_packet_count( buffer.data + packet.pos );
+                        next_packet( cur_input ) ) {
+                    if( is_modis_apid( get_packet_apid( input->packet ) ) ) {
+                        packet_time = cur_input->packet + TIME_OFFSET;    
+                        cmpres = memcmp( packet_time, last_time, TIME_SIZE );       
+                        packet_cnt = get_packet_count( cur_input->packet );
+                    }
                 }
                 if( cmpres == 0 && 
                         packet_cnt != ( ( last_cnt + 1 ) & 0x3fff ) ) {
                     needs_processing = 0;
-                    fprintf( stderr, "File is fully overlapped\n" );
+                    fprintf( stderr, "File is fully overlapped, v2\n" );
                 } else if( cmpres > 0 ) {
                     /*if not found, return to remembered position & report gap*/
-                    packet.pos = packet_pos;
+                    cur_input->packet = packet_pos;
                     fprintf( stderr, "Warning: gap between files\n" );
-                    if( fseek( ord_input[cur_input]->file, file_pos, SEEK_SET) ) 
+                    if( fseek( cur_input->file, file_pos, SEEK_SET) ) 
                     {
                         fprintf( stderr, "Can't set file position" );
                         return 1;
                     }
-                    buffer.size = fread( buffer.data, 1, FILE_READ_SIZE, 
-                        ord_input[cur_input]->file );
-                    if( buffer.size < packet.pos + NIGHT_PACKET_SIZE ) {
+                    cur_input->size = fread( cur_input->data, 1, FILE_READ_SIZE, 
+                        cur_input->file );
+                    if( cur_input->data + cur_input->size 
+                            < cur_input->packet + NIGHT_PACKET_SIZE ) {
                         fprintf( stderr, "Can't read enough data from file\n" );
                         return 1;
                     }
-                    packet.len = get_packet_length( buffer.data + packet.pos );
-                    if( buffer.size < packet.pos + packet.len ) {
+                    cur_input->packet_len = 
+                        get_packet_length( cur_input->packet );
+                    if( cur_input->data + cur_input->size 
+                            < cur_input->packet + cur_input->packet_len ) {
                         fprintf( stderr, "Can't read enough data from file\n" );
                         return 1;   
                     }
                 }
             }
-        } else {
-            needs_processing = 1;
         }
 
         if( needs_processing ) {
-            fprintf( stderr, "Writing packets from %s\n", 
-                ord_input[cur_input]->name );
+            fprintf( stderr, "Writing packets from %s\n", cur_input->name );
             do {
-                packet_cnt = get_packet_count( buffer.data + packet.pos );
-                packet_time = buffer.data + packet.pos + TIME_OFFSET;
-                if( packet_cnt != ( ( last_cnt + 1 ) & 0x3fff ) &&
-                        memcmp( packet_time, last_time, TIME_SIZE ) == 0 &&
-                        ord_input[cur_input+1] != NULL && 
-                        memcmp( ord_input[cur_input+1]->header + TIME_OFFSET,
-                            packet_time, TIME_SIZE ) < 0 ) {
-                    fprintf( stderr, 
-                        "Gap inside file, trying to fix with next one\n");
-                    break;
-                }
+                apid = get_packet_apid( cur_input->packet );
+                if( is_modis_apid( apid ) ) {
+                    packet_cnt = get_packet_count( cur_input->packet );
+                    packet_time = cur_input->packet + TIME_OFFSET;
+                    if( packet_cnt != ( ( last_cnt + 1 ) & 0x3fff ) &&
+                            memcmp( packet_time, last_time, TIME_SIZE ) == 0 &&
+                            ord_input[cur_input_idx] != NULL && 
+                            memcmp( 
+                                ord_input[cur_input_idx]->packet + TIME_OFFSET,
+                                packet_time, TIME_SIZE ) < 0 ) {
+                        fprintf( stderr, 
+                            "Gap inside file, trying to fix with next one\n");
+                        break;
+                    }
 
-                apid = get_packet_apid( buffer.data + packet.pos );
-                if( apid >= MODIS_APID_MIN && apid <= MODIS_APID_MAX ) {
-                    if( !write_packet( &packet, &buffer, &output, out_file ) ) {
+                    if( !write_packet( cur_input, &output ) ) {
                         fprintf( stderr, "Can't write to output\n" );
-                        return 1;
+                        retval = 1;
+                        goto cleanup;
                     }
                     file_pkts_written++;
                     total_pkts_written++;
+                    memcpy( last_time, packet_time, TIME_SIZE );
+                    last_cnt = packet_cnt;
                 }                    
-                memcpy( last_time, packet_time, TIME_SIZE );
-                last_cnt = packet_cnt;
-            } while( next_packet( ord_input[cur_input], &packet, &buffer ) );
+            } while( next_packet( cur_input ) );
             files_processed++;
         }
 
-        fclose( ord_input[cur_input]->file );
-        ord_input[cur_input]->file = NULL;
+        fclose( cur_input->file );
+        cur_input->file = NULL;
         fprintf( stderr, "Finished %s, %d packets written\n", 
-            ord_input[cur_input]->name, file_pkts_written );
+            cur_input->name, file_pkts_written );
 
-        cur_input++;
-    } while( ord_input[cur_input] != NULL );
+    } 
 
-    flush_buffer( &output, out_file );
-
-    if( out_file != stdout ) {
-        fclose( out_file );
-        out_file = NULL;
-    }
+    flush_buffer( &output );
 
 #ifdef HAVE_SDPTOOLKIT
     print_time( "starttime", first_time );
@@ -466,10 +463,24 @@ int main ( int argc, char ** argv )
             fprintf( stderr, "Can't write constructor record\n" );
             retval = 1;
         }
+    }
 
+cleanup: 
+    if( output.file != stdout ) {
+        fclose( output.file );
+        output.file = NULL;
+    }
+
+    if( cnst_file ) {
         fclose( cnst_file );
         cnst_file = NULL;
     }
+
+    free( input );
+    input = NULL;
+
+    free( ord_input );
+    ord_input = NULL;
 
     return retval;
 }
