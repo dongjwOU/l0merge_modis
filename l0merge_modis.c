@@ -363,10 +363,6 @@ int main ( int argc, char ** argv )
                     fprintf( stderr, "File is fully overlapped, v2\n" );
                 } else if( cmpres > 0 ) {
                     /*if not found, return to remembered position & report gap*/
-                    print_time( "Warning: gap between files from %s", 
-                        last_time );
-                    print_time( " to %s\n", ( unsigned char * )packet_time );
-
                     if( fseek( cur_input->file, file_pos, SEEK_SET) ) 
                     {
                         fprintf( stderr, "Can't set file position" );
@@ -387,6 +383,11 @@ int main ( int argc, char ** argv )
                         fprintf( stderr, "Can't read enough data from file\n" );
                         return 1;   
                     }
+
+                    print_time( "Warning: gap between files from %s", 
+                        last_time );
+                    print_time( " to %s\n", 
+                        ( unsigned char * )cur_input->packet + TIME_OFFSET );
                 }
             }
         }
