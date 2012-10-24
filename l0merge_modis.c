@@ -396,7 +396,7 @@ int main ( int argc, char ** argv )
             do {
                 apid = get_packet_apid( cur_input->packet );
                 if( !is_modis_apid( apid ) ) {
-                    break;
+                    continue;
                 }   
 
                 packet_cnt = get_packet_count( cur_input->packet );
