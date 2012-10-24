@@ -94,6 +94,7 @@ static void debug_output ( char const * packet ) {
 }
 
 static void print_time ( char const * name, unsigned char * time ) {
+#ifdef HAVE_SDPTOOLKIT
     char str[UTC_TIME_SIZE];
     int i;
 
@@ -106,6 +107,7 @@ static void print_time ( char const * name, unsigned char * time ) {
         }
         fprintf( stderr, "\n" );
     }
+#endif
 }
 
 static int ensure_data ( input_t * input )
@@ -361,13 +363,16 @@ int main ( int argc, char ** argv )
                     fprintf( stderr, "File is fully overlapped, v2\n" );
                 } else if( cmpres > 0 ) {
                     /*if not found, return to remembered position & report gap*/
-                    cur_input->packet = packet_pos;
                     fprintf( stderr, "Warning: gap between files\n" );
+                    print_time( "last_time", last_time );
+                    print_time( "packet_time", ( unsigned char * )packet_time );
+
                     if( fseek( cur_input->file, file_pos, SEEK_SET) ) 
                     {
                         fprintf( stderr, "Can't set file position" );
                         return 1;
                     }
+                    cur_input->packet = packet_pos;
                     cur_input->size = fread( cur_input->data, 1, FILE_READ_SIZE, 
                         cur_input->file );
                     if( cur_input->data + cur_input->size 
@@ -394,14 +399,16 @@ int main ( int argc, char ** argv )
                     packet_cnt = get_packet_count( cur_input->packet );
                     packet_time = cur_input->packet + TIME_OFFSET;
                     if( packet_cnt != ( ( last_cnt + 1 ) & 0x3fff ) &&
-                            memcmp( packet_time, last_time, TIME_SIZE ) == 0 &&
-                            ord_input[cur_input_idx] != NULL && 
-                            memcmp( 
-                                ord_input[cur_input_idx]->packet + TIME_OFFSET,
-                                packet_time, TIME_SIZE ) < 0 ) {
-                        fprintf( stderr, 
+                            memcmp( packet_time, last_time, TIME_SIZE ) == 0 ) {
+                        if( ord_input[cur_input_idx] != NULL && 
+                                memcmp( ord_input[cur_input_idx]->packet + 
+                                TIME_OFFSET,packet_time, TIME_SIZE ) < 0 ) {
+                            fprintf( stderr, 
                             "Gap inside file, trying to fix with next one\n");
-                        break;
+                            break;
+                        } else {
+                            fprintf( stderr, "Gap inside file, no file to fix");
+                        }
                     }
 
                     if( !write_packet( cur_input, &output ) ) {
