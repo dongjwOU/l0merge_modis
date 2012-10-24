@@ -410,7 +410,8 @@ int main ( int argc, char ** argv )
                         fprintf( stderr, 
                             "Gap inside file, trying to fix with next one\n");
                         break;
-                    } else {
+                    } else if( memcmp( packet_time, last_time, TIME_SIZE ) 
+                            != 0 ) {
                         print_time( "Gap inside file from %s", last_time );
                         print_time( " to %s\n", ( unsigned char *)packet_time );
                     }
