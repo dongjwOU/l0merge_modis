@@ -123,7 +123,8 @@ static int ensure_data ( input_t * input )
 
     if( input->data + input->size < input->packet + input->packet_len ) {
         if( feof( input->file ) ) {
-            fprintf( stderr, "Incomplete packet in the end of file\n" );
+            if( input->data + input->size < input->packet )
+                fprintf( stderr, "Incomplete packet in the end of file\n" );
         } else {
             fprintf( stderr, "Can't read %d bytes for packet\n", 
                 ( int ) input->packet_len );
