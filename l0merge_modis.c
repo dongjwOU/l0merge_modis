@@ -90,6 +90,21 @@ static void debug_output( char const * packet ) {
 
 }
 
+static void print_time( char const * name, unsigned char * time ) {
+    char str[UTC_TIME_SIZE];
+    int i;
+
+    if( PGS_TD_EOSAMtoUTC( time, str ) == PGS_S_SUCCESS ) {
+        fprintf( stderr, "%s=%s\n", name, str );
+    } else {
+        fprintf( stderr, "%s_debug=", name );
+        for( i = 0; i < TIME_SIZE; ++i ) {
+            fprintf( stderr, "%x", time[i] );
+        }
+        fprintf( stderr, "\n" );
+    }
+}
+
 static int ensure_data ( 
     input_t * input, 
     packet_t * packet, 
@@ -415,12 +430,8 @@ int main ( int argc, char ** argv )
     }
 
 #ifdef HAVE_SDPTOOLKIT
-    if( PGS_TD_EOSAMtoUTC( first_time, output.data ) == PGS_S_SUCCESS ) {
-        fprintf( stderr, "starttime=%s\n", output.data );
-    }
-    if( PGS_TD_EOSAMtoUTC( last_time, output.data ) == PGS_S_SUCCESS ) {
-        fprintf( stderr, "stoptime =%s\n", output.data );
-    }
+    print_time( "starttime", first_time );
+    print_time( "stoptime ", last_time );
     if( PGS_TD_EOSAMtoTAI( first_time, &first_time_tai ) == PGS_S_SUCCESS &&
             PGS_TD_EOSAMtoTAI( last_time, &last_time_tai ) == PGS_S_SUCCESS ) {
         fprintf( stderr, "granule length =%f\n", 
