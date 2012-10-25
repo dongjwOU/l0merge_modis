@@ -88,8 +88,8 @@ static int is_modis_packet( input_t const * input ) {
     }
 }
 
-static void debug_output ( char const * packet ) {
-
+static void debug_output ( char const * packet ) 
+{
     int type = ( ( ( unsigned char ) packet[0] ) >> 4 ) & 0x1;
     int apid = get_packet_apid( packet );
     int sflg = get_int16( packet, 2 ) >> 14;
@@ -102,12 +102,19 @@ static void debug_output ( char const * packet ) {
 
 }
 
-static void print_time ( char const * format, unsigned char * time ) {
+static void print_time ( char const * format, unsigned char * time ) 
+{
     char str[UTC_TIME_SIZE];
     int i = 1;
 #ifdef HAVE_SDPTOOLKIT
-    if( PGS_TD_EOSAMtoUTC( time, str ) == PGS_S_SUCCESS ) {
-        i = 0;
+    if( time[0] & 128 ) {
+        if( PGS_TD_EOSPMtoUTC( time, str ) == PGS_S_SUCCESS ) {
+            i = 0;
+        }
+    } else {
+        if( PGS_TD_EOSAMtoUTC( time, str ) == PGS_S_SUCCESS ) {
+            i = 0;
+        }
     }
 #endif
     if( i ) {
@@ -118,6 +125,17 @@ static void print_time ( char const * format, unsigned char * time ) {
     }
     fprintf( stderr, format, str );
 }
+
+#ifdef HAVE_SDPTOOLKIT
+static int eostime_to_tai ( unsigned char * time, double * tai ) 
+{
+    if( time[0] & 128 ) {
+        return PGS_TD_EOSPMtoTAI( time, tai ) != PGS_S_SUCCESS;
+    } else {
+        return PGS_TD_EOSAMtoTAI( time, tai ) != PGS_S_SUCCESS;
+    }
+}
+#endif
 
 static int ensure_data ( input_t * input )
 {
@@ -209,7 +227,7 @@ int main ( int argc, char ** argv )
     input_t * cur_input;
     int needs_processing, cmpres;
     char * packet_time, * packet_pos;
-    size_t file_pos;
+    long file_pos;
 
     memset( last_time, 0, sizeof( last_time ) );
     output.size = 0;
@@ -447,8 +465,8 @@ int main ( int argc, char ** argv )
 #ifdef HAVE_SDPTOOLKIT
     print_time( "starttime=%s\n", first_time );
     print_time( "stoptime =%s\n", last_time );
-    if( PGS_TD_EOSAMtoTAI( first_time, &first_time_tai ) == PGS_S_SUCCESS &&
-            PGS_TD_EOSAMtoTAI( last_time, &last_time_tai ) == PGS_S_SUCCESS ) {
+    if( eostime_to_tai( first_time, &first_time_tai ) == 0 &&
+            eostime_to_tai( last_time, &last_time_tai ) == 0 ) {
         fprintf( stderr, "granule length =%f\n", 
             last_time_tai - first_time_tai );
     }
