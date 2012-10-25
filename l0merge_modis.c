@@ -75,8 +75,17 @@ static int get_packet_apid ( char const * packet )
     return get_int16( packet, 0 ) & 0x7ff;
 }
 
-static int is_modis_apid ( int apid ) {
-    return apid >= MODIS_APID_MIN && apid <= MODIS_APID_MAX;
+static int is_modis_packet( input_t const * input ) {
+    int apid;
+    size_t length;
+
+    apid = get_packet_apid( input->packet );
+    if( apid >= MODIS_APID_MIN && apid <= MODIS_APID_MAX ) {
+        length = get_packet_length( input->packet );
+        return length == NIGHT_PACKET_SIZE || length == DAY_PACKET_SIZE;
+    } else {
+        return 0;
+    }
 }
 
 static void debug_output ( char const * packet ) {
@@ -196,7 +205,7 @@ int main ( int argc, char ** argv )
     input_t ** ord_input;
     output_t output;
     /* local temp vars */
-    int i, j, cur_input_idx = -1, last_cnt = 0, packet_cnt, apid;
+    int i, j, cur_input_idx = -1, last_cnt = 0, packet_cnt;
     input_t * cur_input;
     int needs_processing, cmpres;
     char * packet_time, * packet_pos;
@@ -272,10 +281,8 @@ int main ( int argc, char ** argv )
         /* search for the first MODIS packet */
         input[i].packet = input[i].data;
         input[i].packet_len = get_packet_length( input[i].packet );
-        do {
-            apid = get_packet_apid( input[i].packet );
-        } while( !is_modis_apid( apid ) && next_packet( &input[i] ) );
-        if( !is_modis_apid( apid ) ) {
+        while( !is_modis_packet( &input[i] ) && next_packet( &input[i] ) );
+        if( !is_modis_packet( &input[i] ) ) {
             fprintf( stderr, "File %s contains no modis packets, skipping\n",
                 input[i].name );
             fclose( input[i].file );
@@ -326,15 +333,14 @@ int main ( int argc, char ** argv )
             /* skip all packets before last_time */
             cmpres = -1;
             do {
-                apid = get_packet_apid( cur_input->packet );
-                if( is_modis_apid( apid ) ) {
+                if( is_modis_packet( cur_input ) ) {
                     packet_time = cur_input->packet + TIME_OFFSET;
                     cmpres = memcmp( packet_time, last_time, TIME_SIZE );
                 }
-            } while( ( !is_modis_apid( apid ) || cmpres < 0 ) 
+            } while( ( !is_modis_packet( cur_input ) || cmpres < 0 ) 
                     && next_packet( cur_input ) );
             
-            if( !is_modis_apid( apid ) || cmpres < 0 ) {
+            if( !is_modis_packet( cur_input ) || cmpres < 0 ) {
                 needs_processing = 0;
                 fprintf( stderr, "File is fully overlapped\n" );
             } else {
@@ -351,7 +357,7 @@ int main ( int argc, char ** argv )
                 while( cmpres == 0 && 
                         packet_cnt != ( ( last_cnt + 1 ) & 0x3fff ) &&
                         next_packet( cur_input ) ) {
-                    if( is_modis_apid( get_packet_apid( input->packet ) ) ) {
+                    if( is_modis_packet( cur_input ) ) {
                         packet_time = cur_input->packet + TIME_OFFSET;    
                         cmpres = memcmp( packet_time, last_time, TIME_SIZE );       
                         packet_cnt = get_packet_count( cur_input->packet );
@@ -395,8 +401,7 @@ int main ( int argc, char ** argv )
         if( needs_processing ) {
             fprintf( stderr, "Writing packets from %s\n", cur_input->name );
             do {
-                apid = get_packet_apid( cur_input->packet );
-                if( !is_modis_apid( apid ) ) {
+                if( !is_modis_packet( cur_input ) ) {
                     continue;
                 }   
 
