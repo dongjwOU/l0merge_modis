@@ -337,8 +337,8 @@ int main ( int argc, char ** argv )
 
     /* initialize start & stoptime */
     cur_input_idx = 0;
-    memcpy( first_time, ord_input[0]->data + TIME_OFFSET, TIME_SIZE );
-    memcpy( last_time, ord_input[0]->data + TIME_OFFSET, TIME_SIZE );
+    memcpy( first_time, ord_input[0]->packet + TIME_OFFSET, TIME_SIZE );
+    memcpy( last_time, ord_input[0]->packet + TIME_OFFSET, TIME_SIZE );
 
     /* process files in order of starttime */
     while( ( cur_input = ord_input[cur_input_idx++] ) != NULL ) {
