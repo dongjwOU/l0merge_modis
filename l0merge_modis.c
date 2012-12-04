@@ -101,7 +101,6 @@ static void debug_output ( char const * packet )
     int mcs = get_int16( packet, 12 );
     fprintf( stderr, "%d %d %d %d %d %u %d\n", 
         type, apid, sflg, cnt, days, ms, mcs );
-
 }
 
 static void print_time ( char const * format, unsigned char * time ) 
@@ -206,14 +205,19 @@ static int write_packet ( input_t const * input, output_t * output )
 
 static int flush_buffer ( output_t * output )
 {
-    return ( fwrite( output->data, output->size, 1, output->file ) == 1 );
+    if( output->file != NULL ) {
+        return ( fwrite( output->data, output->size, 1, output->file ) == 1 );
+    } else {
+        return 1;
+    }
 }
 
 static int parse_options( 
     int argc, 
     char ** argv, 
     output_t * output, 
-    output_t * cnstr )
+    output_t * cnstr,
+    output_t * apid957 )
 {
     int opt;
 
@@ -225,7 +229,7 @@ static int parse_options(
     cnstr->size = 0;
     cnstr->file = NULL;
 
-    while( ( opt = getopt( argc, argv, "o:c:") ) != -1 ) {
+    while( ( opt = getopt( argc, argv, "o:c:a:") ) != -1 ) {
         switch( opt ) {
         case 'o':
             if( output->file != stdout ) {
@@ -248,6 +252,18 @@ static int parse_options(
             cnstr->file = fopen( optarg, "wb" );
             if( cnstr->file == NULL ) {
                 fprintf( stderr, "Can't open constructor file %s\n", optarg );
+                return -1;
+            }
+            break;
+        case 'a':
+            if ( apid957->file != NULL ) {
+                fprintf( stderr, "invalid duplicate option -- 'a'\n" );
+                return -1;    
+            }
+            apid957->name = optarg;
+            apid957->file = fopen( optarg, "wb" );
+            if( apid957->file == NULL ) {
+                fprintf( stderr, "Can't open apid957 file %s\n", optarg );
                 return -1;
             }
             break;
@@ -407,6 +423,7 @@ static int preprocess_file(
 static int process_file( 
     input_t * input, 
     output_t * output,
+    output_t * apid957,
     unsigned char last_time[TIME_SIZE],
     int * last_cnt,
     char next_file_time[TIME_SIZE] ) 
@@ -440,7 +457,12 @@ static int process_file(
             packets_written++;
             memcpy( last_time, packet_time, TIME_SIZE );
             *last_cnt = packet_cnt;                     
-        }       
+        } else if ( get_packet_apid( input->packet ) == 957 && apid957->file ) {
+            if( !write_packet( input, apid957 ) ) {
+                fprintf( stderr, "Can't write to apid957\n" );
+                return -1;
+            }
+        }
     } while( next_packet( input ) );
     fprintf( stderr, "Finished %s, %d packets written\n", 
         input->name, packets_written );
@@ -496,13 +518,13 @@ int main ( int argc, char ** argv )
     /* global static structures */
     input_t * input;
     input_t ** ord_input;
-    output_t output, cnst_output;
+    output_t output, cnst, apid957;
     /* local temp vars */
     int i, cur_input_idx, last_cnt, needs_processing, file_pkts_written;
     input_t * cur_input;
     char * next_file_time;
 
-    arg_input_idx = parse_options( argc, argv, &output, &cnst_output );
+    arg_input_idx = parse_options( argc, argv, &output, &cnst, &apid957 );
     if( arg_input_idx == -1 ) {
         return 1;
     }
@@ -554,8 +576,8 @@ int main ( int argc, char ** argv )
             if( ord_input[cur_input_idx] != NULL ) {
                 next_file_time = ord_input[cur_input_idx]->packet + TIME_OFFSET;
             }
-            file_pkts_written = process_file( cur_input, &output, last_time, 
-                &last_cnt, next_file_time );
+            file_pkts_written = process_file( cur_input, &output, &apid957, 
+                last_time, &last_cnt, next_file_time );
             if( file_pkts_written == -1 ) {
                 retval = 1;
                 goto cleanup;
@@ -569,6 +591,7 @@ int main ( int argc, char ** argv )
     } 
 
     flush_buffer( &output );
+    flush_buffer( &apid957 );
 
 #ifdef HAVE_SDPTOOLKIT
     print_time( "starttime=%s\n", first_time );
@@ -580,7 +603,7 @@ int main ( int argc, char ** argv )
     }
 #endif
 
-    write_cnst( &cnst_output, first_time, last_time, total_pkts_written );
+    write_cnst( &cnst, first_time, last_time, total_pkts_written );
 
 cleanup: 
     if( output.file != stdout ) {
@@ -588,9 +611,14 @@ cleanup:
         output.file = NULL;
     }
 
-    if( cnst_output.file ) {
-        fclose( cnst_output.file );
-        cnst_output.file = NULL;
+    if( cnst.file ) {
+        fclose( cnst.file );
+        cnst.file = NULL;
+    }
+
+    if( apid957.file ) {
+        fclose( apid957.file );
+        apid957.file = NULL;
     }
 
     free( input );
